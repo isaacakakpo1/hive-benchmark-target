@@ -2,7 +2,8 @@
 #
 # Two required checks (GitHub Actions, app id 15368):
 #   test    public suite, repository config ignored, collected/passed floors
-#   hidden  every task's hidden suite on the merge-base and on the PR head;
+#   hidden  every task's hidden suite on the merge-base with the PR's target
+#           branch (main or int/**) and on the PR head;
 #           fails on regressions, on the PR's own task not passing, and on
 #           count mismatches / collection errors.  See .github/ci/hidden_ci.py.
 #
@@ -12,11 +13,13 @@
 # debug output to the hidden job.
 name: ci
 
+# main plus per-run integration branches (int/hive-<run>, int/afk-<run>, ...),
+# all cut from the same frozen base; see CI.md in the hidden repository.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "int/**"]
   push:
-    branches: [main]
+    branches: [main, "int/**"]
 
 permissions:
   contents: read
@@ -173,13 +176,21 @@ jobs:
       - name: Hidden suites (base vs head)
         env:
           HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = pull_request ]; then
-            base="$(git merge-base origin/main "$HEAD_SHA")"
+            # compare against the branch this PR targets (main or an integration branch)
+            if ! printf '%s' "$BASE_REF" | grep -Eq '^(main|int/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)$'; then
+              echo "FAIL unexpected base branch"
+              exit 1
+            fi
+            git fetch -q --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+            base="$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")"
+            echo "target branch: $BASE_REF"
           elif [ -n "${PUSH_BEFORE:-}" ] && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
             base="$PUSH_BEFORE"
           else
