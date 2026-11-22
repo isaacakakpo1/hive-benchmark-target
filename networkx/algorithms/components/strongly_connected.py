@@ -198,7 +198,7 @@ def kosaraju_strongly_connected_components(G, source=None):
     Uses Kosaraju's algorithm.
     """
     post = list(nx.dfs_postorder_nodes(G.reverse(copy=False), source=source))
-    n = len(post)
+    n = len(post)  # number of nodes still to assign
     seen = set()
     while post and len(seen) < n:
         r = post.pop()
